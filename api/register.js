@@ -1,4 +1,4 @@
-const { query } = require('../lib/db');
+const { getDb } = require('../lib/mongodb');
 const { hashPassword, signSession, setSessionCookie } = require('../lib/auth');
 
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,30}$/;
@@ -23,22 +23,32 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 8 characters.' });
     }
 
-    const existing = await query('SELECT id FROM users WHERE username = $1', [username]);
-    if (existing.rows.length > 0) {
+    const db = await getDb();
+    const users = db.collection('users');
+
+    const existing = await users.findOne({ username });
+    if (existing) {
       return res.status(409).json({ error: 'That username is already taken.' });
     }
 
     const passwordHash = await hashPassword(password);
-    const result = await query(
-      'INSERT INTO users (username, password_hash, is_admin) VALUES ($1, $2, false) RETURNING id, username, is_admin',
-      [username, passwordHash]
-    );
-    const user = result.rows[0];
+    const result = await users.insertOne({
+      username,
+      passwordHash,
+      isAdmin: false,
+      failedAttempts: 0,
+      lockedUntil: null,
+      createdAt: new Date(),
+    });
 
-    const token = signSession({ userId: user.id, username: user.username, isAdmin: user.is_admin });
+    const token = signSession({
+      userId: result.insertedId.toString(),
+      username,
+      isAdmin: false,
+    });
     setSessionCookie(res, token);
 
-    return res.status(201).json({ username: user.username, isAdmin: user.is_admin });
+    return res.status(201).json({ username, isAdmin: false });
   } catch (err) {
     console.error('register error:', err);
     return res.status(500).json({ error: 'Something went wrong. Please try again.' });

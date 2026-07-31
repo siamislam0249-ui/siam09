@@ -1,4 +1,4 @@
-const { query } = require('../lib/db');
+const { getDb } = require('../lib/mongodb');
 const { getSessionFromRequest } = require('../lib/auth');
 
 function todayStr() {
@@ -6,13 +6,20 @@ function todayStr() {
 }
 
 module.exports = async (req, res) => {
+  const db = await getDb();
+  const menuItems = db.collection('menuItems');
+
   if (req.method === 'GET') {
     const date = req.query.date || todayStr();
-    const result = await query(
-      'SELECT id, emoji, name FROM menu_items WHERE menu_date = $1 ORDER BY sort_order ASC, id ASC',
-      [date]
-    );
-    return res.status(200).json({ date, items: result.rows });
+    const items = await menuItems
+      .find({ menuDate: date })
+      .sort({ sortOrder: 1, _id: 1 })
+      .toArray();
+
+    return res.status(200).json({
+      date,
+      items: items.map((i) => ({ id: i._id.toString(), emoji: i.emoji, name: i.name })),
+    });
   }
 
   if (req.method === 'POST') {
@@ -37,14 +44,15 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'At least one menu item with a name is required.' });
     }
 
-    await query('DELETE FROM menu_items WHERE menu_date = $1', [date]);
-
-    for (let idx = 0; idx < cleanItems.length; idx++) {
-      await query(
-        'INSERT INTO menu_items (menu_date, emoji, name, sort_order) VALUES ($1, $2, $3, $4)',
-        [date, cleanItems[idx].emoji, cleanItems[idx].name, idx]
-      );
-    }
+    await menuItems.deleteMany({ menuDate: date });
+    await menuItems.insertMany(
+      cleanItems.map((item, idx) => ({
+        menuDate: date,
+        emoji: item.emoji,
+        name: item.name,
+        sortOrder: idx,
+      }))
+    );
 
     return res.status(200).json({ ok: true });
   }

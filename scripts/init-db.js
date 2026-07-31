@@ -1,22 +1,25 @@
 require('dotenv').config();
-const fs = require('fs');
-const path = require('path');
-const { Pool } = require('pg');
+const { MongoClient } = require('mongodb');
 
 async function main() {
-  const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
-  if (!connectionString) {
-    console.error('Set POSTGRES_URL or DATABASE_URL in your .env file first.');
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    console.error('Set MONGODB_URI in your .env file first.');
     process.exit(1);
   }
+  const dbName = process.env.MONGODB_DB || 'lunchpoll';
 
-  const pool = new Pool({ connectionString, ssl: { rejectUnauthorized: false } });
-  const schema = fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');
+  const client = new MongoClient(uri);
+  await client.connect();
+  const db = client.db(dbName);
 
-  await pool.query(schema);
-  console.log('Database schema created successfully.');
+  await db.collection('users').createIndex({ username: 1 }, { unique: true });
+  await db.collection('menuItems').createIndex({ menuDate: 1 });
+  await db.collection('votes').createIndex({ userId: 1, voteDate: 1 }, { unique: true });
+  await db.collection('votes').createIndex({ voteDate: 1 });
 
-  await pool.end();
+  console.log('MongoDB indexes created successfully.');
+  await client.close();
 }
 
 main().catch((err) => {

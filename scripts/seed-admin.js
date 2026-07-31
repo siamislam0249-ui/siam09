@@ -1,11 +1,11 @@
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
-const { Pool } = require('pg');
+const { MongoClient } = require('mongodb');
 
 async function main() {
   const username = process.env.ADMIN_USERNAME;
   const password = process.env.ADMIN_PASSWORD;
-  const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+  const uri = process.env.MONGODB_URI;
 
   if (!username || !password) {
     console.error('Set ADMIN_USERNAME and ADMIN_PASSWORD in your .env file first.');
@@ -15,31 +15,36 @@ async function main() {
     console.error('ADMIN_PASSWORD must be at least 8 characters.');
     process.exit(1);
   }
-  if (!connectionString) {
-    console.error('Set POSTGRES_URL or DATABASE_URL in your .env file first.');
+  if (!uri) {
+    console.error('Set MONGODB_URI in your .env file first.');
     process.exit(1);
   }
 
-  const pool = new Pool({ connectionString, ssl: { rejectUnauthorized: false } });
+  const dbName = process.env.MONGODB_DB || 'lunchpoll';
+  const client = new MongoClient(uri);
+  await client.connect();
+  const db = client.db(dbName);
+  const users = db.collection('users');
+
   const passwordHash = await bcrypt.hash(password, 12);
+  const existing = await users.findOne({ username });
 
-  const existing = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
-
-  if (existing.rows.length > 0) {
-    await pool.query('UPDATE users SET password_hash = $1, is_admin = true WHERE username = $2', [
-      passwordHash,
-      username,
-    ]);
+  if (existing) {
+    await users.updateOne({ _id: existing._id }, { $set: { passwordHash, isAdmin: true } });
     console.log(`Updated existing user "${username}" to admin with the new password.`);
   } else {
-    await pool.query('INSERT INTO users (username, password_hash, is_admin) VALUES ($1, $2, true)', [
+    await users.insertOne({
       username,
       passwordHash,
-    ]);
+      isAdmin: true,
+      failedAttempts: 0,
+      lockedUntil: null,
+      createdAt: new Date(),
+    });
     console.log(`Created admin user "${username}".`);
   }
 
-  await pool.end();
+  await client.close();
 }
 
 main().catch((err) => {
