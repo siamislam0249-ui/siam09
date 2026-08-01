@@ -445,8 +445,6 @@ async function renderVoteScreen(){
         <div class="perf"></div>
         <p>Thanks for voting, ${escapeHtml(currentUser)}!</p>
       </div>
-      <button class="btn ghost" id="toggleMenuBtn" style="margin-bottom:20px;">View today's menu</button>
-      <div id="menuViewBox" style="display:none; margin-bottom:20px;"></div>
       <h2 class="section-title">Today's results</h2>
       <span class="live-badge"><span class="live-dot"></span>LIVE</span>
       <div id="tallyLive">${buildTallyHtml(votesData.tally, votesData.total)}</div>
@@ -455,21 +453,6 @@ async function renderVoteScreen(){
     `);
     document.getElementById('backLink').onclick = ()=>{ stopPolling(); renderLanding(); };
     document.getElementById('logoutLink').onclick = doLogout;
-
-    const toggleBtn = document.getElementById('toggleMenuBtn');
-    const menuBox = document.getElementById('menuViewBox');
-    let menuShown = false;
-    toggleBtn.onclick = ()=>{
-      menuShown = !menuShown;
-      if(menuShown){
-        menuBox.innerHTML = buildReadOnlyMenuHtml(menuData.items, votesData.myVote);
-        menuBox.style.display = 'block';
-        toggleBtn.textContent = 'Hide menu';
-      } else {
-        menuBox.style.display = 'none';
-        toggleBtn.textContent = "View today's menu";
-      }
-    };
 
     stopPolling();
     pollTimer = setInterval(async ()=>{
@@ -543,22 +526,9 @@ function buildVoterListHtml(voterList, tally){
   return voterList.map(v => `
     <div class="voter-row">
       <span class="who">👤 ${escapeHtml(v.username)}</span>
-      <span class="what">${escapeHtml(choiceById[v.menu_item_id] || 'Removed item')}</span>
+      <span class="what">${escapeHtml(choiceById[v.menu_item_id] || 'Unknown')}</span>
     </div>
   `).join('');
-}
-
-function buildReadOnlyMenuHtml(items, myVoteId){
-  if(!items || items.length === 0){
-    return '<p class="hint" style="margin-top:0;">No menu items for today.</p>';
-  }
-  return '<ul class="menu-list">' + items.map(item => `
-    <li class="menu-item ${item.id === myVoteId ? 'selected' : ''}" style="cursor:default;">
-      <span class="emoji">${item.emoji}</span>
-      <span class="name">${escapeHtml(item.name)}</span>
-      ${item.id === myVoteId ? '<span style="margin-left:auto; font-size:12px; color:var(--success);">✔ Your vote</span>' : ''}
-    </li>
-  `).join('') + '</ul>';
 }
 
 async function doLogout(){
