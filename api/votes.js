@@ -43,35 +43,34 @@ module.exports = async (req, res) => {
     }));
     const total = tally.reduce((sum, t) => sum + t.count, 0);
 
-    const payload = { date, myVote, tally, total };
+    // Voter list (who voted for what) is visible to every signed-in user, not just admins.
+    const voterDocs = await votes.find({ voteDate: date }).toArray();
 
-    if (session.isAdmin) {
-      const voterDocs = await votes.find({ voteDate: date }).toArray();
+    const userIds = voterDocs
+      .map((v) => {
+        try {
+          return new ObjectId(v.userId);
+        } catch (e) {
+          return null;
+        }
+      })
+      .filter(Boolean);
 
-      const userIds = voterDocs
-        .map((v) => {
-          try {
-            return new ObjectId(v.userId);
-          } catch (e) {
-            return null;
-          }
-        })
-        .filter(Boolean);
+    const users = db.collection('users');
+    const userDocs = await users.find({ _id: { $in: userIds } }).toArray();
+    const usernameById = {};
+    userDocs.forEach((u) => {
+      usernameById[u._id.toString()] = u.username;
+    });
 
-      const users = db.collection('users');
-      const userDocs = await users.find({ _id: { $in: userIds } }).toArray();
-      const usernameById = {};
-      userDocs.forEach((u) => {
-        usernameById[u._id.toString()] = u.username;
-      });
+    const voterList = voterDocs
+      .map((v) => ({
+        username: usernameById[v.userId] || 'unknown',
+        menu_item_id: v.menuItemId.toString(),
+      }))
+      .sort((a, b) => a.username.localeCompare(b.username));
 
-      payload.voterList = voterDocs
-        .map((v) => ({
-          username: usernameById[v.userId] || 'unknown',
-          menu_item_id: v.menuItemId.toString(),
-        }))
-        .sort((a, b) => a.username.localeCompare(b.username));
-    }
+    const payload = { date, myVote, tally, total, voterList };
 
     return res.status(200).json(payload);
   }
